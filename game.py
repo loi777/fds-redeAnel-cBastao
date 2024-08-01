@@ -4,6 +4,7 @@ import random
 import json
 import time
 import sys
+import signal
 
 # Configuração dos endereços e portas de cada máquina
 nodes = [
@@ -25,12 +26,14 @@ sock.bind(nodes[current_node_index])
 
 # Função para enviar mensagens
 def send_message(message, target_node_index):
+    print(f"Enviando mensagem para nó {target_node_index}: {message}")
     sock.sendto(message.encode(), nodes[target_node_index])
 
 # Função para receber mensagens
 def receive_message():
     while True:
         data, addr = sock.recvfrom(1024)
+        print(f"Recebendo mensagem de {addr}: {data.decode()}")
         handle_message(data.decode())
 
 # Thread para receber mensagens
@@ -44,6 +47,7 @@ def pass_token():
 # Função para lidar com mensagens recebidas
 def handle_message(message):
     if message == "TOKEN":
+        print("Recebido TOKEN")
         start_round()
     else:
         process_game_message(json.loads(message))
@@ -51,9 +55,11 @@ def handle_message(message):
 # Função para iniciar uma rodada
 def start_round():
     if is_dealer():
+        print("Iniciando rodada como dealer")
         distribute_cards()
         start_betting()
     else:
+        print("Passando bastão")
         pass_token()
 
 # Função para verificar se o nó atual é o dealer
@@ -111,7 +117,7 @@ def process_game_message(message):
 def handle_cards(hand):
     global player_hand
     player_hand = hand
-    print(f"Received cards: {hand}")
+    print(f"Cartas recebidas: {hand}")
 
 # Função para lidar com apostas
 def handle_bet(player, bet):
@@ -176,7 +182,7 @@ def handle_result(results):
 def handle_score(scores):
     global player_scores
     player_scores = scores
-    print(f"Updated scores: {player_scores}")
+    print(f"Pontuações atualizadas: {player_scores}")
     check_for_elimination()
 
 # Função para verificar se algum jogador foi eliminado
@@ -184,7 +190,7 @@ def check_for_elimination():
     global player_scores, nodes
     for player, score in list(player_scores.items()):
         if score <= 0:
-            print(f"Player {player} has been eliminated!")
+            print(f"Jogador {player} foi eliminado!")
             del player_scores[player]
             nodes.remove(nodes[player])
     pass_token()
@@ -195,6 +201,15 @@ def update_scores_and_pass_token():
         send_message(json.dumps({'type': 'SCORE', 'scores': player_scores}), i)
     pass_token()
 
+# Handler para sinal de interrupção
+def signal_handler(sig, frame):
+    print('Encerrando o programa...')
+    sock.close()
+    sys.exit(0)
+
+# Configura o handler para o sinal de interrupção
+signal.signal(signal.SIGINT, signal_handler)
+
 # Iniciar o processo de jogo
 if __name__ == "__main__":
     player_hand = []
@@ -202,4 +217,10 @@ if __name__ == "__main__":
     player_scores = {i: 12 for i in range(len(nodes))}
     player_bets = {}
     player_wins = {i: 0 for i in range(len(nodes))}
-    pass_token() if is_dealer() else receive_message()
+    if is_dealer():
+        print("Sou o dealer, iniciando o jogo.")
+        pass_token()
+    else:
+        print("Aguardando o bastão.")
+    while True:
+        time.sleep(1)
