@@ -203,6 +203,3 @@ if __name__ == "__main__":
     player_bets = {}
     player_wins = {i: 0 for i in range(len(nodes))}
     pass_token() if is_dealer() else receive_message()
-    while True:
-        time.sleep(1)
-        pass
