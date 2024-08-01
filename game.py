@@ -3,6 +3,7 @@ import threading
 import random
 import json
 import time
+import sys
 
 # Configuração dos endereços e portas de cada máquina
 nodes = [
@@ -13,7 +14,7 @@ nodes = [
 ]
 
 # Índice do nó atual (mudar conforme necessário)
-current_node_index = 0
+current_node_index = int(sys.argv[1]) if len(sys.argv) > 1 else 0
 
 # Contador de rodadas
 current_round = 1
