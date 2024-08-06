@@ -1,3 +1,8 @@
+# Projeto: Jogo de Cartas usando Rede em anel
+# Trabalho 2 da disciplina de Redes de Computadores 1 - 2024/1
+# Professores: Luiz Carlos Pessoa Albini e Eduardo Todt
+# Autores: Victor Ribeiro Garcia (GRR20203954) e Luiz Fernando Giongo dos Santos (GRR20203965)
+
 import socket
 import threading
 import random
@@ -20,14 +25,14 @@ current_node_index = int(sys.argv[1]) if len(sys.argv) > 1 else 0
 next_node_index = (current_node_index + 1) % total_nodes
 
 # Variáveis globais
-current_round = 11 # Round Inicial (iniciar com 1)
+current_round = 1 # Round Inicial (iniciar com 1)
 player_hand = []
 bets = [0, 0, 0, 0] 
-player_scores = [3, 3, 3, 3] # Scores Iniciais (iniciar com 12)
+player_scores = [12, 12, 12, 12] # Scores Iniciais (iniciar com 12)
 cards_played = [0, 0, 0, 0]     
 results = [0, 0, 0, 0]     
 player_wins = [0, 0, 0, 0]     
-dealer_index = 0  # Dealer inicial
+dealer_index = 0  # Dealer inicial (iniciar com 0)
 token = False  # Variável para indicar se o nó atual possui o token
 
 # Socket DGRAM (UDP)
@@ -335,6 +340,8 @@ def give_result(results):
     print(f"---------------------------------Rodada {current_round}-------------------------------------")
     for i in range(len(nodes)):
         scores [i] = player_scores[i] - results[i]
+        if scores[i] <= 0:
+            scores[i] = 0
         print(f"Score do jogador {i} = Score Atual: {player_scores[i]} - Penalidade: {results[i]} = {scores[i]}")
     give_score(scores)
     
