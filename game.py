@@ -15,17 +15,18 @@ nodes = [
 ]
 
 # Índice do nó atual (mudar conforme necessário)
+total_nodes = len(nodes)
 current_node_index = int(sys.argv[1]) if len(sys.argv) > 1 else 0
+next_node_index = (current_node_index + 1) % total_nodes
 
 # Variáveis globais
-current_round = 11 #iniciar com 1
+current_round = 11 # Round Inicial (iniciar com 1)
 player_hand = []
-bets = {}
-player_scores = [12, 12, 12, 12] #i: 12 for i in range(len(nodes))
-players_wins = {}
-cards_played = {}
-results = [0, 0, 0, 0]     #{i: 0 for i in range(len(nodes))}
-player_wins = [0, 0, 0, 0]     #{i: 0 for i in range(len(nodes))}
+bets = [0, 0, 0, 0] 
+player_scores = [3, 3, 3, 3] # Scores Iniciais (iniciar com 12)
+cards_played = [0, 0, 0, 0]     
+results = [0, 0, 0, 0]     
+player_wins = [0, 0, 0, 0]     
 dealer_index = 0  # Dealer inicial
 token = False  # Variável para indicar se o nó atual possui o token
 
@@ -53,9 +54,10 @@ threading.Thread(target=receive_message, daemon=True).start()
 # Função para enviar o bastão para o próximo nó
 def pass_token(next_node_index):
     global token
-    send_message("TOKEN", next_node_index)
-    print(f"Passando o bastão para o próximo nó: {next_node_index}")
-    token = False
+    if token == True: # Só passa o token se o nó atual possuir o token
+        send_message("TOKEN", next_node_index)
+        print(f"Passando o bastão para o próximo nó: {next_node_index}")
+        token = False
 
 # Função para lidar com mensagens recebidas, só deve inicializar o jogo uma vez no início do current_round
 def handle_message(message):
@@ -74,31 +76,15 @@ def process_game_message(message):
     elif message_type == 'CARDS':
         handle_cards(message.get('hand'))
     elif message_type == 'BET':
-        handle_bet(message.get('player'), message.get('bet'))
+        handle_bet(message.get('player'), message.get('bet0'), message.get('bet1'), message.get('bet2'), message.get('bet3'))
+    elif message_type == 'ALL_BETS':
+        handle_all_bets(message.get('bet0'), message.get('bet1'), message.get('bet2'), message.get('bet3'))
     elif message_type == 'PLAY':
-        handle_play(message.get('player'), message.get('card'))
-    elif message_type == 'RESULT':
-        handle_result(message.get('results'))
-    elif message_type == 'SCORE':
-        handle_score(message.get('scores'))
+        handle_play(message.get('player'), message.get('card0'), message.get('card1'), message.get('card2'), message.get('card3'))
+    elif message_type == 'ALL_PLAYS':
+        handle_all_plays(message.get('card0'), message.get('card1'), message.get('card2'), message.get('card3'))
     else:
         print("Mensagem inválida")
-
-    #message_type = message.get('type')
-    #if message_type == 'START':
-    #    handle_start(message['dealer'])
-    #elif message_type == 'CARDS':
-    #    handle_cards(message['hand'])
-    #elif message_type == 'BET':
-    #    handle_bet(message['player'], message['bet'])
-    #elif message_type == 'PLAY':
-    #    handle_play(message['player'], message['card'])
-    #elif message_type == 'RESULT':
-    #    handle_result(message['results'])
-    #elif message_type == 'SCORE':
-    #    handle_score(message['scores'])
-    #else:
-    #    print(f"Mensagem inválida: {message}")
 
 # Função para lidar com o início do jogo
 def handle_start(dealer):
@@ -109,12 +95,9 @@ def handle_start(dealer):
 
 # Função para iniciar uma rodada
 def start_round():
-    if is_dealer():
-        distribute_cards()
-        start_betting()
-    else:
-        print("Aguardando início da rodada pelo dealer")
-
+    global player_hand
+    print(f"Iniciando rodada {current_round}")
+    distribute_cards()
 
 # Função para verificar se o nó atual é o dealer
 def is_dealer():
@@ -126,15 +109,30 @@ def distribute_cards():
     ranks = ['4', '5', '6', '7', 'Q', 'J', 'K', 'A', '2', '3']
     deck = [f"{rank}{suit}" for suit in suits for rank in ranks]
     random.shuffle(deck)
-    cards_per_player = 14 - current_round  # Número de cartas por jogador diminui a cada rodada
-    for i in range(len(nodes)):
+    if(current_round < 14):
+        cards_per_player = 14 - current_round  # Número de cartas por jogador diminui a cada rodada
+    else:
+        cards_per_player = 1
+    if (token == True):
         hand = random.sample(deck, cards_per_player)
-        send_message(json.dumps({'type': 'CARDS', 'hand': hand}), i)
+        pass_token(next_node_index)
+        send_message(json.dumps({'type': 'CARDS', 'hand': hand}), next_node_index)
+
+# Função para lidar com as cartas recebidas 
+def handle_cards(hand):
+    global player_hand
+    player_hand = hand
+    print(f"Cartas recebidas: {player_hand}")
+    if current_node_index == dealer_index:
+        print("Aguardando início das apostas")
+        start_betting()
+    else:
+        distribute_cards()
 
 # Função para iniciar as apostas (uma aposta por jogador por rodada)
 def start_betting():
     global bets
-    bets = {}
+    bets = [-1, -1, -1, -1]
     #is dealer adicionado
     if(token == True) and is_dealer():
         print(f"Iniciando apostas com jogador {current_node_index}")
@@ -144,109 +142,161 @@ def start_betting():
 
 # Função para o jogador digitar sua aposta (uma aposta por jogador por rodada), para fazer a aposta o jogador deve ter o token
 def get_player_bet(player_index, next_node_index):
-    global token
+    global token, bets
     if token:
         while True:
             try:
-                bet = int(input("Digite sua aposta: "))
-                if bet >= 0 and bet <= 14 - current_round:
-                    # Passa o bastão para o próximo jogador
-                    pass_token(next_node_index)
-                    # Envia a mensagem da aposta para todos os jogadores
-                    for i in range(len(nodes)):
-                        send_message(json.dumps({'type': 'BET', 'player': player_index, 'bet': bet, 'next_node': next_node_index}), i)
-                    break
+                print(f"------------------------Rodada {current_round}---------------------------")
+                print(f"Dealer Atual: {dealer_index}")
+                print(f"Suas cartas: {player_hand}")
+                if current_round < 14:
+                    bet = int(input(f"Digite sua aposta (0-{14 - current_round}): "))
+                    if bet >= 0 and bet <= 14 - current_round:
+                        print("-------------------------------------------------------------")
+                        pass_token(next_node_index)
+                        bets[player_index] = bet
+                        send_message(json.dumps({'type': 'BET', 'player': player_index, 'bet0': bets[0], 'bet1': bets[1], 'bet2': bets[2], 'bet3': bets[3], 'next_node': next_node_index}), next_node_index)
+                        break
+                    else:
+                        print("Aposta inválida. Tente novamente.")
                 else:
-                    print("Aposta inválida. Tente novamente.")
+                    bet = int(input(f"Digite sua aposta (0-1): "))
+                    if bet >= 0 and bet <= 1:
+                        print("-------------------------------------------------------------")
+                        pass_token(next_node_index)
+                        bets[player_index] = bet
+                        send_message(json.dumps({'type': 'BET', 'player': player_index, 'bet0': bets[0], 'bet1': bets[1], 'bet2': bets[2], 'bet3': bets[3], 'next_node': next_node_index}), next_node_index)
+                        break
+                    else:
+                        print("Aposta inválida. Tente novamente.")
             except ValueError:
                 print("Entrada inválida. Por favor, digite um número.")
     else:
         print(f"Aguardando aposta do jogador {next_node_index}")
 
-
-# Função para verificar se o nó atual tem o token
-def has_token():
-    return token
-
-# Função para lidar com cartas recebidas
-def handle_cards(hand):
-    global player_hand
-    player_hand = hand
-    print(f"Cartas recebidas: {player_hand}")
-
 # Função para lidar com apostas 
-def handle_bet(player, bet):
+def handle_bet(player, bet0, bet1, bet2, bet3):
     global bets
-    bets[player] = bet
-    print(f"Aposta do jogador {player}: {bet}")
-    if len(bets) >= len(nodes):
-        print("Aguardando início do jogo")
-        start_game()
+    bets[0] = bet0
+    bets[1] = bet1
+    bets[2] = bet2
+    bets[3] = bet3
+    if (len(bets) >= len(nodes)) and (token == True) and is_dealer():
+        send_all_bets()
     else:
         get_player_bet(current_node_index, (current_node_index + 1) % len(nodes))
 
+# Função para enviar as bets atualizadas
+def send_all_bets():
+    global bets
+    pass_token(next_node_index)
+    send_message(json.dumps({'type': 'ALL_BETS', 'bet0': bets[0], 'bet1': bets[1], 'bet2': bets[2], 'bet3': bets[3]}), (current_node_index + 1) % len(nodes))
+    if dealer_index != current_node_index:
+        print(f"Apostas recebidas: {bets}")
+
+def handle_all_bets(bet0, bet1, bet2, bet3):
+    global bets
+    bets[0] = bet0
+    bets[1] = bet1
+    bets[2] = bet2
+    bets[3] = bet3
+    if (token == True) and is_dealer():
+        print(f"Apostas recebidas: {bets}")
+        start_game()
+    else:
+        send_all_bets()
+
 # Função para iniciar o jogo após as apostas, Dealer inicia o jogo
 def start_game():
-    if is_dealer():
-        print("Iniciando jogo como dealer")
+    global cards_played
+    cards_played = [-1, -1, -1, -1]
+    print(f"Iniciando jogo com jogador {current_node_index}")
+    if(token == True) and is_dealer():
         get_player_card(current_node_index, (current_node_index + 1) % len(nodes))
-    else:
-        print("Aguardando início do jogo pelo dealer")
 
 # Função para lidar com jogadas, para fazer a jogada o jogador deve ter o token
-def handle_play(player, card):
+def handle_play(player, card0, card1, card2, card3):
     global cards_played
-    cards_played[player] = card
-    print(f"Jogada do jogador {player}: {card}")
-    if len(cards_played) >= len(nodes):
-        print("Aguardando resultado da rodada")
-        cards_analyzed = cards_played
-        # Zerar valor de cards_played para as próximas jogadas
-        cards_played = {}
-        calculate_results(cards_analyzed)
+    cards_played[0] = card0
+    cards_played[1] = card1
+    cards_played[2] = card2
+    cards_played[3] = card3
+    print(f"Cartas jogadas: {cards_played}")
+    if (len(cards_played) >= len(nodes)) and (token == True) and is_dealer():
+        send_all_plays()
     else:
         get_player_card(current_node_index, (current_node_index + 1) % len(nodes))
+
+# Função para enviar as jogadas atualizadas
+def send_all_plays():
+    global cards_played
+    pass_token(next_node_index)
+    send_message(json.dumps({'type': 'ALL_PLAYS', 'card0': cards_played[0], 'card1': cards_played[1], 'card2': cards_played[2], 'card3': cards_played[3], 'next_node': next_node_index}), (current_node_index + 1) % len(nodes))
+    if dealer_index != current_node_index:
+        print(f"Cartas jogadas: {cards_played}")
+        calculate_results(cards_played)
+
+def handle_all_plays(card0, card1, card2, card3):
+    global cards_played
+    cards_played[0] = card0
+    cards_played[1] = card1
+    cards_played[2] = card2
+    cards_played[3] = card3
+    if (token == True) and is_dealer():
+        print(f"Cartas jogadas: {cards_played}")
+        calculate_results(cards_played)
+    else:
+        send_all_plays()
 
 # Função para o jogador digitar sua aposta (uma aposta por jogador por rodada), para fazer a aposta o jogador deve ter o token
 def get_player_card(player_index, next_node_index):
-    global token
+    global token, cards_played
     if token:
         while True:
+            print(f"------------Rodada {current_round}------------")
+            print(f"Dealer Atual: {dealer_index}")
+            print(f"Sua aposta: {bets[player_index]}")
+            print(f"Jogadas vencidas: {player_wins[player_index]}")
+            print(f"Cartas jogadas: {cards_played}")
             print(f"Sua mão: {player_hand}")
             for idx, card in enumerate(player_hand):
                 print(f"{idx}: {card}")
             try:
                 index = int(input("Escolha o índice da carta para jogar: "))
                 if 0 <= index < len(player_hand):
+                    print("------------------------------------------------")
                     card = player_hand.pop(index)
                     print(f"Você jogou: {card}")
                     # Passa o bastão para o próximo jogador
                     pass_token(next_node_index)
-                    # Envia a mensagem da carta jogada para todos os jogadores
-                    for i in range(len(nodes)):
-                        send_message(json.dumps({'type': 'PLAY', 'player': player_index, 'card': card}), i)
+                    # Envia a mensagem da carta jogada para o proximo jogador
+                    cards_played[player_index] = card
+                    send_message(json.dumps({'type': 'PLAY', 'player': player_index, 'card0': cards_played[0], 'card1': cards_played[1], 'card2': cards_played[2], 'card3': cards_played[3], 'next_node': next_node_index}), next_node_index)
                     break
                 else:
                     print("Índice inválido. Tente novamente.")
             except ValueError:
                 print("Entrada inválida. Por favor, digite uma carta válida.")
     else:
-        print(f"Aguardando jogada do jogador {next_node_index}")
+        print(f"Aguardando jogada do jogador {(current_node_index - 1) % total_nodes}")
 
 # Função para calcular resultados
 def calculate_results(cards_analyzed):
-    global player_wins, token
+    global player_wins, token, cards_played
     winning_card = compare_cards(cards_analyzed)
-    winning_player = [player for player, card in cards_analyzed.items() if card == winning_card][0]
+    winning_player = None
+    # Jogador que jogou a carta maior por ultimo vence
+    for i in range(4):
+        if cards_analyzed[i] == winning_card:
+            winning_player = i
     print("-----------------------------------")
     print(f"Jogador {winning_player} venceu com a carta {winning_card}")
     print("-----------------------------------")
+    cards_played = [-1, -1, -1, -1]
     player_wins[winning_player] += 1
-    if len(player_hand) == 0 and token == True:
-        print("Aguardando resultado final")
+    if len(player_hand) == 0:
+        print("Calculando resultado final")
         accounting_results(player_wins)
-    elif len(player_hand) == 0:
-        print("Aguardando resultado final")
     else:
         get_player_card(current_node_index, (current_node_index + 1) % len(nodes))
 
@@ -260,7 +310,7 @@ def compare_cards(cards_analyzed):
     for rank in ranks:
         for suit in suits:
             card = f"{rank}{suit}"
-            if card in cards_analyzed.values():
+            if card in cards_analyzed:
                 winning_card = card
                 break
         if winning_card:
@@ -276,60 +326,73 @@ def accounting_results(player_wins):
             print(f"Jogador {i} cumpriu sua aposta") # == 0: player fez sua aposta, != 0: player não fez sua aposta
         else:
             print(f"Jogador {i} não cumpriu sua aposta")
-    if token == True and dealer_index == current_node_index:
-        for i in range(len(nodes)):
-            send_message(json.dumps({'type': 'RESULT', 'results': results}), i)
+    give_result(results)
 
 # Função para lidar com resultados
-def handle_result(results):
+def give_result(results):
     global player_scores, bets, token, nodes
     scores = [0, 0, 0, 0]
+    print(f"---------------------------------Rodada {current_round}-------------------------------------")
     for i in range(len(nodes)):
         scores [i] = player_scores[i] - results[i]
         print(f"Score do jogador {i} = Score Atual: {player_scores[i]} - Penalidade: {results[i]} = {scores[i]}")
+    give_score(scores)
     
-
 # Função para lidar com pontuações
-def handle_score(scores):
+def give_score(scores):
     global player_scores
     player_scores = scores
-    print(f"Pontuações atualizadas: {player_scores}")
+    print(f"SUA PONTUAÇÃO ATUAL: {player_scores[current_node_index]}")
+    print("------------------------------------------------------------------------------")
     check_for_elimination()
 
 # Função para verificar se algum jogador foi eliminado
 def check_for_elimination():
-    global player_scores, nodes, current_round
-    for player, score in list(player_scores.items()):
-        if score <= 0:
-            print(f"Jogador {player} foi eliminado!")
-            del player_scores[player]
-            nodes.remove(nodes[player])
-            if player == dealer_index:
-                pass_token_to_next_dealer()
-
-
-# Função para atualizar pontuações e passar o bastão
-def update_scores_and_pass_token():
-    global current_round
+    global player_scores
+    player_elimited = False
     for i in range(len(nodes)):
-        send_message(json.dumps({'type': 'SCORE', 'scores': player_scores}), i)
-    
-    pass_token_to_next_dealer()
-    #else:
-    #    current_round += 1  # Incrementa a rodada após todas as cartas serem jogadas
-    #    pass_token((dealer_index + 1) % len(nodes))
+        if player_scores[i] <= 0:
+            if i == current_node_index:
+                player_elimited = True
+                print(f"Você foi eliminado!")
+            else:
+                player_elimited = True
+                print(f"Jogador {i} foi eliminado")
+    if player_elimited == True:
+        print(f"Obrigado por jogar, jogador {current_node_index}!")
+        sock.close()
+        sys.exit(0)
+    else:
+        time.sleep(5) 
+    update_round_and_pass_token()
 
-# Função para passar o bastão para o próximo nó para ser o novo dealer
+# Função para zerar os dados do round, incrimentar o round e passar o dealer
+def update_round_and_pass_token():
+    global current_round, dealer_index, token, player_hand, bets, cards_played, results, player_wins
+    player_hand = []
+    bets = [0, 0, 0, 0] 
+    cards_played = [0, 0, 0, 0]     
+    results = [0, 0, 0, 0]     
+    player_wins = [0, 0, 0, 0]       
+    current_round += 1
+    if(token == True) and is_dealer():
+        dealer_index = (dealer_index + 1) % len(nodes)
+        print(f"Novo dealer: nó {dealer_index}")
+        pass_token_to_next_dealer()
+    else:
+        dealer_index = (dealer_index + 1) % len(nodes)
+        print(f"Novo dealer: nó {dealer_index}")
+        token = False
+
+# Função para passar o bastão para o próximo nó para ser o novo dealer e iniciar proxima rodada
 def pass_token_to_next_dealer():
-    global current_round, dealer_index
-    current_round = current_round + 1
-    dealer_index = (dealer_index + 1) % len(nodes)
-    print(f"Passando o bastão para o próximo dealer: nó {dealer_index}")
-    send_message("TOKEN", dealer_index)
+    global dealer_index
+    pass_token(dealer_index)
+    send_message(json.dumps({'type': 'START', 'dealer': dealer_index}), dealer_index)
 
 # Handler para sinal de interrupção
 def signal_handler(sig, frame):
-    print('Encerrando o programa...')
+    print('\nEncerrando o programa...')
     sock.close()
     sys.exit(0)
 
@@ -340,9 +403,11 @@ signal.signal(signal.SIGINT, signal_handler)
 if __name__ == "__main__":
     print(f"Jogo iniciado no nó {current_node_index}")
     if current_node_index == 0:
-        send_message("TOKEN", current_node_index)
+        token = True
+        print(f"Token: {token}")
         send_message(json.dumps({'type': 'START', 'dealer': dealer_index}), current_node_index)
     else:
-        pass_token(dealer_index)
+        token = False
+        print(f"Token: {token}")
     while True:
         time.sleep(1)
